@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/coverage
+**/reports
+backend/public
+backend/version.json
+dist-azure
+.git
+*.log

@@ -1,0 +1,32 @@
+# Stage 3 — TEST (AWS CodeBuild) — the quality gate.
+# Any failing test (or coverage below the threshold in backend/package.json)
+# makes this build fail, which stops the pipeline before Deploy.
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+  pre_build:
+    commands:
+      - npm ci --prefix backend --no-audit --no-fund
+      - npm ci --prefix frontend --no-audit --no-fund
+  build:
+    commands:
+      - echo "Running backend unit + integration tests"
+      - npm run test:ci --prefix backend
+      - echo "Running frontend unit tests"
+      - npm test --prefix frontend
+
+# Test results and coverage appear under CodeBuild > Report groups.
+reports:
+  backend-tests:
+    base-directory: backend/reports
+    files:
+      - junit.xml
+    file-format: JUNITXML
+  backend-coverage:
+    base-directory: backend/coverage
+    files:
+      - clover.xml
+    file-format: CLOVERXML

@@ -1,0 +1,18 @@
+# Local MySQL for development (optional — the API also runs without a database).
+#   docker compose up -d
+#   DB_HOST=127.0.0.1 DB_PASSWORD=quickbite npm run dev --prefix backend
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: quickbite
+      MYSQL_USER: quickbite
+      MYSQL_PASSWORD: quickbite
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - '3306:3306'
+    volumes:
+      - quickbite-db:/var/lib/mysql
+
+volumes:
+  quickbite-db:

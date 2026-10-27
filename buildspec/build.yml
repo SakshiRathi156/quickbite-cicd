@@ -1,0 +1,42 @@
+# Stage 2 — BUILD (AWS CodeBuild)
+# Installs packages, builds the React frontend, stamps the API with the commit id,
+# and hands two artifacts to the pipeline:
+#   BackendBundle  -> deployed to EC2 by CodeDeploy (contains appspec.yml + hook scripts)
+#   FrontendBundle -> synced to S3 and served through CloudFront
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+  pre_build:
+    commands:
+      - echo "Building commit ${CODEBUILD_RESOLVED_SOURCE_VERSION}"
+      - npm ci --prefix frontend --no-audit --no-fund
+  build:
+    commands:
+      - npm run build --prefix frontend
+      - |
+        cat > backend/version.json <<EOF
+        {"commit":"${CODEBUILD_RESOLVED_SOURCE_VERSION:-unknown}","builtAt":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","buildId":"${CODEBUILD_BUILD_ID}"}
+        EOF
+      - cat backend/version.json
+      - chmod +x backend/scripts/*.sh
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: backend
+  secondary-artifacts:
+    BackendBundle:
+      base-directory: backend
+      files:
+        - '**/*'
+      exclude-paths:
+        - node_modules/**/*
+        - coverage/**/*
+        - reports/**/*
+    FrontendBundle:
+      base-directory: frontend/dist
+      files:
+        - '**/*'

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+reports/
+backend/version.json
+.env
+*.log
+.DS_Store
+backend/public/
+dist-azure/

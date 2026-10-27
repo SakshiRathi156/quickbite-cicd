@@ -1,0 +1,19 @@
+[Unit]
+Description=QuickBite API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=quickbite
+WorkingDirectory=/opt/quickbite/app
+EnvironmentFile=/etc/quickbite/app.env
+ExecStart=/usr/local/bin/node src/server.js
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

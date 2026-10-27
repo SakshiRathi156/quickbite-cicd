@@ -1,0 +1,4 @@
+# Shell scripts run on Linux (Cloud Build, Cloud Shell), so keep LF line endings.
+* text=auto eol=lf
+*.png binary
+*.zip binary

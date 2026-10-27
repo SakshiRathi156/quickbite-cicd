@@ -1,0 +1,97 @@
+# QuickBite CI/CD on Google Cloud (Cloud Build -> Artifact Registry -> Cloud Run).
+# A push to main starts this build through the Cloud Build trigger made by infra/gcp/setup.sh.
+#
+#   Build  -> Test (quality gate) -> Push -> Deploy (no traffic) -> Smoke test -> Release
+#
+# A failing test stops the build before anything is pushed. A new revision that fails the
+# smoke test never receives traffic, so customers stay on the last good version (rollback).
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE: quickbite
+  _REPO: quickbite
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  # Lets the step scripts read PROJECT_ID, BUILD_ID, COMMIT_SHA, _REGION etc. as variables.
+  automapSubstitutions: true
+
+steps:
+  # Stage 1 - SOURCE: work out which commit is being built.
+  - id: Source
+    name: bash
+    script: |
+      #!/usr/bin/env bash
+      commit="${COMMIT_SHA:-manual-${BUILD_ID:0:8}}"
+      echo "$commit" > /workspace/commit.txt
+      echo "Building commit $commit"
+
+  # Stage 2 - BUILD: React build + API packaged into one container image.
+  - id: Build
+    name: gcr.io/cloud-builders/docker
+    script: |
+      #!/usr/bin/env bash
+      set -e
+      docker build \
+        --build-arg COMMIT="$(cat /workspace/commit.txt)" \
+        --build-arg BUILD_ID="$BUILD_ID" \
+        -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/app:${BUILD_ID}" .
+
+  # Stage 3 - TEST: the quality gate. Any failing test (or coverage under 70%) stops here.
+  - id: Test
+    name: node:20
+    script: |
+      #!/usr/bin/env bash
+      set -e
+      npm ci --prefix backend --no-audit --no-fund
+      npm ci --prefix frontend --no-audit --no-fund
+      echo "Running backend unit + integration tests"
+      npm run test:ci --prefix backend
+      echo "Running frontend unit tests"
+      npm test --prefix frontend
+
+  - id: Push
+    name: gcr.io/cloud-builders/docker
+    args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/app:${BUILD_ID}']
+
+  # Stage 4 - DEPLOY: create a new Cloud Run revision with no customer traffic yet.
+  # It gets a private "candidate" URL so it can be checked first.
+  - id: Deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    script: |
+      #!/usr/bin/env bash
+      set -e
+      IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/app:${BUILD_ID}"
+      COMMON=(--image "$IMAGE" --region "${_REGION}" --allow-unauthenticated
+              --max-instances 1 --memory 256Mi --cpu 1
+              --set-env-vars TRACKING_STEP_SECONDS=30 --quiet)
+      if gcloud run services describe "${_SERVICE}" --region "${_REGION}" >/dev/null 2>&1; then
+        gcloud run deploy "${_SERVICE}" "${COMMON[@]}" --no-traffic --tag candidate
+      else
+        echo "First deployment: creating the service"
+        gcloud run deploy "${_SERVICE}" "${COMMON[@]}" --tag candidate
+      fi
+
+  # Stage 5 - MONITOR: smoke test the candidate revision before customers see it.
+  - id: Monitor
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    script: |
+      #!/usr/bin/env bash
+      set -e
+      URL=$(gcloud run services describe "${_SERVICE}" --region "${_REGION}" \
+              --format='value(status.traffic.url)' | tr ';' '\n' | grep 'candidate---')
+      echo "Candidate revision: $URL"
+      if ! SMOKE_TIMEOUT=120 bash tools/smoke-test.sh "$URL" "$(cat /workspace/commit.txt)"; then
+        echo "Smoke test FAILED: the new revision gets no traffic. Customers stay on the last good version."
+        exit 1
+      fi
+
+  # Stage 6 - RELEASE: send 100% of customer traffic to the new revision.
+  - id: Release
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    script: |
+      #!/usr/bin/env bash
+      set -e
+      gcloud run services update-traffic "${_SERVICE}" --region "${_REGION}" --to-latest --quiet
+      echo "Live at: $(gcloud run services describe "${_SERVICE}" --region "${_REGION}" --format='value(status.url)')"
+
