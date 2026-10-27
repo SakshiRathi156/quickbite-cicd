@@ -93,6 +93,8 @@ On Windows PowerShell, set the variable first: `$env:TRACKING_STEP_SECONDS=5; np
 
 This is the version that is actually deployed. It stays within Google Cloud's free tier for a student demo.
 
+**Live site:** https://quickbite-e5l5uzhnea-uc.a.run.app (the footer shows the deployed commit)
+
 | Slide stage | AWS version | Google Cloud version |
 | --- | --- | --- |
 | Source | GitHub + CodePipeline | GitHub + **Cloud Build trigger** on push to `main` |

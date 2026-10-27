@@ -1,7 +1,7 @@
 #!/bin/bash
-# Post-deployment check (the "Monitor" stage on Azure).
-# Passes only when the live site runs the expected commit AND its key pages work.
-#   ./tools/smoke-test.sh https://quickbite-xxxx.azurewebsites.net <expected-commit>
+# Post-deployment check (the "Monitor" step in cloudbuild.yaml).
+# Passes only when the site runs the expected commit AND its key pages work.
+#   ./tools/smoke-test.sh https://candidate---quickbite-xxxx.a.run.app <expected-commit>
 set -uo pipefail
 BASE="${1:?site url}"
 EXPECTED="${2:?expected commit}"
